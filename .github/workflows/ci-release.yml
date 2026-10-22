@@ -1,0 +1,93 @@
+name: CI e Release
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Testes e compilação Windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+
+      - name: Configurar Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Executar testes
+        run: go test -race ./...
+
+      - name: Compilar para Windows x64
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -buildvcs=false -ldflags="-H windowsgui" -o "$RUNNER_TEMP/logoff-ususarios.exe" .
+
+  release:
+    name: Publicar Release
+    needs: test
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_name == github.event.repository.default_branch &&
+      startsWith(github.event.head_commit.message, 'Versão ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+
+      - name: Configurar Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validar versão do commit
+        id: version
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        shell: bash
+        run: |
+          subject="${COMMIT_MESSAGE%%$'\n'*}"
+          if [[ "$subject" =~ ^Versão[[:space:]]([0-9]+(\.[0-9]+)*)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          else
+            echo "Assunto inválido: use exatamente 'Versão 1.0' ou 'Versão 1.0.0'." >&2
+            exit 1
+          fi
+
+      - name: Compilar e preparar os dois arquivos de Release
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false -ldflags="-H windowsgui" -o build/logoff-ususarios.exe .
+          cp build/logoff-ususarios.exe dist/logoff-ususarios.exe
+          (cd build && zip -j "$GITHUB_WORKSPACE/dist/logoff-ususarios.zip" LEIA-ME.txt logoff-ususarios.exe)
+
+      - name: Criar Release e anexar o executável e ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ steps.version.outputs.version }}"
+          dist/logoff-ususarios.exe
+          dist/logoff-ususarios.zip
+          --title "${{ steps.version.outputs.version }}"
+          --generate-notes
+          --target "$GITHUB_SHA"

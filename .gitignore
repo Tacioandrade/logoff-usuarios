@@ -1,0 +1,20 @@
+# Binários e pacotes gerados
+*.exe
+*.test
+*.out
+/build/
+/build.zip
+
+# Cobertura e dados de execução do Go
+/coverage/
+coverage.txt
+
+# Arquivos temporários e de editores
+*.tmp
+*.log
+*.swp
+*~
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
